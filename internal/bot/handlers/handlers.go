@@ -9,10 +9,47 @@ import (
 	tb "gopkg.in/telebot.v4"
 )
 
-func handlePollResults(ctx domain.Context, msg *tb.Message, member *tb.ChatMember) {
-	log := ctx.Log()
+func handleBan(ctx domain.Context, msg *tb.Message, member *tb.ChatMember) {
 	bot := ctx.Bot()
-	time.Sleep(time.Hour)
+	log := ctx.Log()
+
+	if err := bot.Ban(ctx.Chat(), member); err != nil {
+		log.Error("cannot ban user", utils.ErrorAttr(err))
+
+		if _, err := bot.Reply(msg, "Чота не могу забанить"); err != nil {
+			log.Error("can't even cry", utils.ErrorAttr(err))
+		}
+		return
+	}
+
+	if _, err := bot.Reply(msg, "Ban nyuuu"); err != nil {
+		log.Error("failed to reply to poll", utils.ErrorAttr(err))
+	}
+}
+
+func handleUnban(ctx domain.Context, msg *tb.Message, member *tb.ChatMember) {
+	bot := ctx.Bot()
+	log := ctx.Log()
+
+	if err := bot.Unban(ctx.Chat(), member.User); err != nil {
+		log.Error("cannot unban user", utils.ErrorAttr(err))
+
+		if _, err := bot.Reply(msg, "Чота не могу разбанить"); err != nil {
+			log.Error("can't even cry", utils.ErrorAttr(err))
+		}
+		return
+	}
+
+	if _, err := bot.Reply(msg, "Разбан nyuuu"); err != nil {
+		log.Error("failed to reply to poll", utils.ErrorAttr(err))
+	}
+}
+
+func handlePollResults(ctx domain.Context, msg *tb.Message, member *tb.ChatMember) {
+	time.Sleep(time.Minute)
+
+	bot := ctx.Bot()
+	log := ctx.Log()
 
 	poll, err := bot.StopPoll(msg)
 	if err != nil {
@@ -21,36 +58,10 @@ func handlePollResults(ctx domain.Context, msg *tb.Message, member *tb.ChatMembe
 		return
 	}
 
-	shouldMute := poll.Options[0].VoterCount > poll.Options[1].VoterCount
-
-	if _, err := bot.Reply(msg, map[bool]string{
-		true:  "Мут nyuuu",
-		false: "Размучен.",
-	}[shouldMute]); err != nil {
-		log.Error("failed to reply to poll", utils.ErrorAttr(err))
-	}
-
-	perm := !shouldMute // value of permissions is opposite of shouldMute
-
-	member.RestrictedUntil = map[bool]int64{
-		true:  tb.Forever(), // tb.Forever() is int64
-		false: 0,
-	}[shouldMute]
-	member.CanSendMessages = perm
-	member.CanSendMedia = perm
-	member.CanSendPolls = perm
-	member.CanSendOther = perm
-	member.CanAddPreviews = perm
-
-	if err := bot.Restrict(ctx.Chat(), member); err != nil {
-		logWord := map[bool]string{true: "mute", false: "unmute"}[shouldMute]
-		msgWord := map[bool]string{true: "замутить", false: "размутить"}[shouldMute]
-
-		log.Error(fmt.Sprintf("cannot %s user", logWord), utils.ErrorAttr(err))
-
-		if _, err := bot.Reply(msg, "Чота не могу "+msgWord); err != nil {
-			log.Error("can't even cry", utils.ErrorAttr(err))
-		}
+	if poll.Options[0].VoterCount > poll.Options[1].VoterCount {
+		handleBan(ctx, msg, member)
+	} else {
+		handleUnban(ctx, msg, member)
 	}
 }
 
@@ -85,12 +96,12 @@ func HandleVoteban(ctx domain.Context) error {
 		return ctx.Reply("Админом меня сделай, олух")
 	}
 
-	msg, err := bot.Send(ctx.Chat(), &tb.Poll{
+	msg, err := bot.Reply(ctx.Message(), &tb.Poll{
 		Question:  "Забанить или разбанить?",
 		Anonymous: false,
 		Options: []tb.PollOption{
-			{Text: "Мут"},
-			{Text: "Размут"},
+			{Text: "Бан"},
+			{Text: "Разбан"},
 		},
 	})
 	if err != nil {
